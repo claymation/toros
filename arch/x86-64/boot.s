@@ -8,6 +8,11 @@
 	.text
 
 	/*
+	 * Support 64-bit processors (AMD64 and Intel 64).
+	 */
+	.arch generic64
+
+	/*
 	 * Mutliboot header. Per the specification, it "must be contained completely
 	 * within the first 8192 bytes of the OS image, and must be longword (32-bit)
 	 * aligned."
@@ -38,17 +43,22 @@
 	.global _start
 _start:
 	/*
+	 * Use 32-bit addresses and operands.
+	 */
+	.code32
+
+	/*
 	 * Set up the GDT.
 	 */
 	lgdt	GDTR
 
 	/*
-	 * Load CS.
+	 * Load CS with 32-bit protected mode segment descriptor.
 	 */
 	ljmp	$0x08, $1f
 
 	/*
-	 * Load data and stack segments.
+	 * Load data and stack segment descriptors.
 	 */
 1:	movw	$0x10, %dx
 	movw	%dx, %ds
@@ -58,15 +68,53 @@ _start:
 	movw	%dx, %ss
 
 	/*
+	 * Enable physical address extensions (PAE).
+	 */
+	movl	%cr4, %edx
+	bts	$5, %edx
+	movl	%edx, %cr4
+
+	/*
+	 * Set up an identity mapping.
+	 */
+	leal	PML4, %edx
+	movl	%edx, %cr3
+
+	/*
+	 * Enable long mode.
+	 */
+	movl	$0xC0000080, %ecx
+	rdmsr
+	bts	$8, %eax
+	wrmsr
+
+	/*
+	 * Enable paging, activating long mode.
+	 */
+	movl	%cr0, %edx
+	bts	$31, %edx
+	movl	%edx, %cr0
+
+	/*
+	 * Load CS with 64-bit long mode segment descriptor.
+	 */
+	ljmp	$0x18, $1f
+
+	/*
+	 * Use 64-bit addresses and 32-bit operands.
+	 */
+1:	.code64
+
+	/*
 	 * Set up the kernel stack.
 	 */
-	movl	$0x200000, %edx
-	movl	%edx, %esp
+	movq	$0x200000, %rdx
+	movq	%rdx, %rsp
 
 	/*
 	 * Continue in C.
 	 */
-	call	main
+	callq	main
 
 	/*
 	 * Halt.
@@ -91,6 +139,7 @@ _start:
 	/*
 	 * Descriptor flags, byte 7.
 	 */
+	.equiv	DESC_LONG,	1 << 5
 	.equiv	DESC_32_BIT,	1 << 6
 	.equiv	DESC_4_KB, 	1 << 7
 
@@ -124,6 +173,16 @@ GDT:
 	.byte	DESC_4_KB | DESC_32_BIT | 0xf
 	.byte	0x00
 
+	/*
+	 * 64-bit flat user data segment, ring 0.
+	 */
+	.word	0x0000
+	.word	0x0000
+	.byte	0x00
+	.byte	DESC_PRESENT | DESC_USER | DESC_CODE
+	.byte	DESC_LONG
+	.byte	0x00
+
 GDTR:
 	/*
 	 * The 6-byte structure to load into the GDTR.
@@ -133,5 +192,31 @@ GDTR:
 	 */
 	.word	GDTR - GDT
 	.int	GDT
+
+
+	/*
+	 * Page table entry flags.
+	 */
+	.equiv	PAGE_PRESENT,	1 << 0
+	.equiv	PAGE_WRITABLE,	1 << 1
+	.equiv	PAGE_USER,	1 << 2
+	.equiv	PAGE_SIZE,	1 << 7
+
+	/*
+	 * Level-4 page map: one entry for an identity map of the first 1 GiB.
+	 */
+	.align 4096
+PML4:
+	/* The | operator doesn't work with ABS and .data section symbols; + does */
+	.int	PDP + (PAGE_PRESENT | PAGE_WRITABLE)
+	.int	0x00000000
+
+	/*
+	 * Page directory pointer table: one entry for an identity map of the first 1 GiB.
+	 */
+	.align 4096
+PDP:
+	.int	PAGE_PRESENT | PAGE_WRITABLE | PAGE_SIZE
+	.int	0x00000000
 
 	.end

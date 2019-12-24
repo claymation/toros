@@ -1,11 +1,12 @@
 RM	:= rm -f
+OBJCOPY	:= objcopy
 
 ASFLAGS	+= --fatal-warnings
-ASFLAGS	+= -march=i386 --32
-LDFLAGS	+= -static -nostdlib -melf_i386
+LDFLAGS	+= -static -nostdlib
 
 kernel.elf: boot.o ../../kernel/lib.o
-	$(LD) $(LDFLAGS) -T elf_i386.lds -o $@ $^
+	$(LD) $(LDFLAGS) -T boot.lds -o $@ $^
+	$(OBJCOPY) -O elf32-i386 $@
 
 .PHONY: clean
 clean:

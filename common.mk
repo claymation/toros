@@ -10,11 +10,10 @@ CPPFLAGS += $(addprefix -I, $(includes))
 
 CFLAGS	 += -std=gnu99 -ffreestanding
 CFLAGS	 += -Wall -Wextra -Werror
-CFLAGS	 += -march=i386 -m32
 CFLAGS	 += -fcf-protection=none -fno-stack-clash-protection
 CFLAGS	 += -fno-pic
 
-LDFLAGS	 += -static -nostdlib -melf_i386
+LDFLAGS	 += -static -nostdlib
 
 $(library): $(objects)
 	$(LD) $(LDFLAGS) -r -o $@ $^
